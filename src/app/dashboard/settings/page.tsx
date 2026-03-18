@@ -1,8 +1,6 @@
 /**
  * Settings Page (ORG_ADMIN only — enforced by middleware + RBAC)
  */
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
 
@@ -112,6 +110,7 @@ export default async function SettingsPage() {
     );
   }
 
+  const { auth } = await import("@/lib/auth");
   const session = await auth();
   if (!session?.user?.activeOrgId) redirect("/login");
   if (session.user.role !== "ORG_ADMIN") {
@@ -129,6 +128,7 @@ export default async function SettingsPage() {
     );
   }
 
+  const { prisma } = await import("@/lib/prisma");
   const [org, members] = await Promise.all([
     prisma.organization.findUnique({ where: { id: session.user.activeOrgId } }),
     prisma.orgMember.findMany({
