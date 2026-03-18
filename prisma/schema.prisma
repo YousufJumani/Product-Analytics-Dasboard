@@ -1,0 +1,254 @@
+// Prisma Schema — saas-analytics-copilot
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUTH (NextAuth v5 required tables)
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // hashed with bcrypt for credential login
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]
+  memberships OrgMember[]
+  chatMessages ChatMessage[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────
+// MULTI-TENANT ORGANIZATION
+// ─────────────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      OrgPlan  @default(FREE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members      OrgMember[]
+  integrations Integration[]
+  metrics      MetricSnapshot[]
+  jobs         Job[]
+  chatMessages ChatMessage[]
+
+  @@map("organizations")
+}
+
+enum OrgPlan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+// RBAC role scoped to an org — a user can be admin in one org, viewer in another
+model OrgMember {
+  id     String  @id @default(cuid())
+  role   OrgRole @default(VIEWER)
+  joinedAt DateTime @default(now())
+
+  userId String
+  orgId  String
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@map("org_members")
+}
+
+enum OrgRole {
+  ORG_ADMIN
+  ANALYST
+  VIEWER
+}
+
+// ─────────────────────────────────────────────────────────────
+// INTEGRATIONS (Stripe + GitHub connections per org)
+// ─────────────────────────────────────────────────────────────
+
+model Integration {
+  id          String            @id @default(cuid())
+  provider    IntegrationProvider
+  status      IntegrationStatus @default(PENDING)
+  // Encrypted/hashed credentials stored server-side only
+  accessToken String?           @db.Text
+  refreshToken String?          @db.Text
+  externalId  String?           // Stripe customer/account ID or GitHub installation ID
+  metadata    Json?             // provider-specific config
+  lastSyncAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, provider])
+  @@map("integrations")
+}
+
+enum IntegrationProvider {
+  STRIPE
+  GITHUB
+}
+
+enum IntegrationStatus {
+  PENDING
+  ACTIVE
+  ERROR
+  DISCONNECTED
+}
+
+// ─────────────────────────────────────────────────────────────
+// METRICS — time-series snapshots for charts
+// ─────────────────────────────────────────────────────────────
+
+model MetricSnapshot {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date   // day-level granularity
+  mrr       Float    @default(0)
+  arr       Float    @default(0)
+  newMrr    Float    @default(0)
+  churnedMrr Float   @default(0)
+  expansionMrr Float @default(0)
+  activeUsers  Int   @default(0)
+  newUsers     Int   @default(0)
+  churnedUsers Int   @default(0)
+  trialUsers   Int   @default(0)
+  // GitHub-sourced
+  commits      Int   @default(0)
+  openPRs      Int   @default(0)
+  closedPRs    Int   @default(0)
+  createdAt  DateTime @default(now())
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, date])
+  @@index([orgId, date])
+  @@map("metric_snapshots")
+}
+
+// ─────────────────────────────────────────────────────────────
+// BACKGROUND JOBS (Postgres-backed queue)
+// ─────────────────────────────────────────────────────────────
+
+model Job {
+  id          String    @id @default(cuid())
+  type        JobType
+  status      JobStatus @default(PENDING)
+  payload     Json?
+  result      Json?
+  errorMsg    String?   @db.Text
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  scheduledAt DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  orgId String?
+  org   Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledAt])
+  @@map("jobs")
+}
+
+enum JobType {
+  STRIPE_SYNC
+  GITHUB_SYNC
+  METRICS_ROLLUP
+  EXPORT_CSV
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────────────────────
+// AI COPILOT — persisted chat history per org
+// ─────────────────────────────────────────────────────────────
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  role      ChatRole
+  content   String      @db.Text
+  createdAt DateTime    @default(now())
+
+  orgId  String
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId String?
+  user   User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, createdAt])
+  @@map("chat_messages")
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
