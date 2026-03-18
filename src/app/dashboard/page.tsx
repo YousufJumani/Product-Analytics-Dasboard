@@ -2,14 +2,14 @@
  * Dashboard Overview Page
  * Server Component — fetches data on the server, no loading spinners for KPIs
  */
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { withCache } from "@/lib/cache";
 import { subDays, startOfDay } from "date-fns";
 import OverviewClient from "./OverviewClient";
 import { cookies } from "next/headers";
 
 async function getOverviewData(orgId: string) {
+  const { prisma } = await import("@/lib/prisma");
+
   return withCache(`overview:${orgId}`, async () => {
     const since = startOfDay(subDays(new Date(), 30));
     const snapshots = await prisma.metricSnapshot.findMany({
@@ -59,6 +59,7 @@ export default async function OverviewPage() {
     );
   }
 
+  const { auth } = await import("@/lib/auth");
   const session = await auth();
   const activeOrgId = session?.user?.activeOrgId;
 
