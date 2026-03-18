@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
 
 export default async function HomePage() {
   const demoModeEnabled = process.env.DEMO_MODE !== "false";
@@ -7,6 +6,7 @@ export default async function HomePage() {
     redirect("/dashboard");
   }
 
+  const { auth } = await import("@/lib/auth");
   const session = await auth();
   if (session?.user) {
     redirect("/dashboard");
