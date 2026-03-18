@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import type { OrgRole } from "@prisma/client";
 import { clsx } from "clsx";
+
+type OrgRole = "ORG_ADMIN" | "ANALYST" | "VIEWER";
 
 interface SidebarProps {
   role: OrgRole | null;

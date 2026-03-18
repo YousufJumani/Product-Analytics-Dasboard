@@ -1,6 +1,6 @@
 "use client";
 
-import type { OrgRole } from "@prisma/client";
+type OrgRole = "ORG_ADMIN" | "ANALYST" | "VIEWER";
 
 interface TopBarProps {
   userName: string;

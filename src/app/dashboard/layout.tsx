@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import { cookies } from "next/headers";
-import type { OrgRole } from "@prisma/client";
+
+type OrgRole = "ORG_ADMIN" | "ANALYST" | "VIEWER";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const demoModeEnabled = process.env.DEMO_MODE !== "false";
@@ -27,6 +27,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     );
   }
 
+  const { auth } = await import("@/lib/auth");
   const session = await auth();
 
   if (!session?.user && !isDemoBypass) redirect("/login");
