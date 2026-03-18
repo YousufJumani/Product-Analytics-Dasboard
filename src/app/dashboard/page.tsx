@@ -28,14 +28,10 @@ async function getOverviewData(orgId: string) {
 }
 
 export default async function OverviewPage() {
-  const session = await auth();
-  const activeOrgId = session?.user?.activeOrgId;
   const demoModeEnabled = process.env.DEMO_MODE !== "false";
   const isDemoBypass = demoModeEnabled || cookies().get("demo_bypass")?.value === "1";
 
-  if (!activeOrgId && !isDemoBypass) return null;
-
-  if (!activeOrgId && isDemoBypass) {
+  if (isDemoBypass) {
     const snapshots = Array.from({ length: 7 }).map((_, idx) => ({
       date: new Date(Date.now() - (6 - idx) * 24 * 60 * 60 * 1000).toISOString(),
       mrr: 18000 + idx * 260,
@@ -62,6 +58,11 @@ export default async function OverviewPage() {
       />
     );
   }
+
+  const session = await auth();
+  const activeOrgId = session?.user?.activeOrgId;
+
+  if (!activeOrgId) return null;
 
   const orgId = activeOrgId as string;
   const role = session?.user?.role ?? null;
